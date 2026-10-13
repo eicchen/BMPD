@@ -1,0 +1,16 @@
+# Per-model vLLM parameters. Add one [models."vendor/Name"] section per model.
+#
+# tensor_parallel_size — GPUs per vLLM instance (--tensor-parallel-size). Default 1.
+# gpu_mem_util         — --gpu-memory-utilization. Default 0.92.
+# max_model_len        — --max-model-len. Required.
+# vllm_serve_flags     — extra CLI flags appended to every `vllm serve` call.
+
+[models."meta-llama/Llama-3.1-8B-Instruct"]
+tensor_parallel_size = 1
+gpu_mem_util = 0.92
+max_model_len = 131072
+vllm_serve_flags = [
+    "--no-enable-log-requests",
+    "--enable-auto-tool-choice",
+    "--tool-call-parser", "llama3_json",
+]
