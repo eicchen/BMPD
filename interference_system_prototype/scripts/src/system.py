@@ -50,8 +50,8 @@ def _wait(proc, url, what):
     raise RuntimeError(f"{what} exited with {proc.returncode}")
 
 
-def launch_lmcache(gpus, log_dir):
-    """Start the LMCache MP server shared by the engines on gpus, logging into log_dir; return it once healthy."""
+def launch_lmcache(gpus, log_dir, l2_path=None):
+    """Start the LMCache MP server shared by the engines on gpus, with a filesystem L2 store at l2_path if given, logging into log_dir; return it once healthy."""
     cmd = [
         "lmcache",
         "server",
@@ -74,6 +74,8 @@ def launch_lmcache(gpus, log_dir):
         "--max-cpu-workers",
         "2",
     ]
+    if l2_path:
+        cmd += ["--l2-adapter", json.dumps({"type": "fs", "base_path": str(l2_path)})]
     env = {"CUDA_VISIBLE_DEVICES": ",".join(map(str, gpus))}
     log = log_dir / "lmcache.log"
     proc = _spawn(cmd, env, log)
