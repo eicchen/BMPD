@@ -83,8 +83,8 @@ def launch_lmcache(gpus, log_dir, l2_path=None):
     return proc
 
 
-def launch_engine(gpu, role, log_dir, connector=None):
-    """Start a kv_producer or kv_consumer engine with KV connector, or a colocated one, on gpu serving ENGINE_PORT + gpu, logging into log_dir; return it without waiting."""
+def launch_engine(gpu, role, log_dir, connector=None, max_num_seqs=None, scheduling_policy=None):
+    """Start a kv_producer or kv_consumer engine with KV connector, or a colocated one, on gpu serving ENGINE_PORT + gpu, logging into log_dir, capped at max_num_seqs requests per step and scheduling by scheduling_policy if given; return it without waiting."""
     port = ENGINE_PORT + gpu
     log_dir.mkdir(parents=True, exist_ok=True)
     (log_dir / "engine.jsonl").unlink(missing_ok=True)
@@ -105,6 +105,8 @@ def launch_engine(gpu, role, log_dir, connector=None):
         "--engine-log-file",
         str(log_dir / "engine.jsonl"),
         *(["--no-enable-prefix-caching"] if connector == "LMCacheMPConnector" else []),
+        *(["--max-num-seqs", str(max_num_seqs)] if max_num_seqs else []),
+        *(["--scheduling-policy", scheduling_policy] if scheduling_policy else []),
         *PROFILE.get("vllm_serve_flags", []),
     ]
     env = {
@@ -158,7 +160,7 @@ def client(gpu):
 
 async def complete(client, rec, max_tokens=None, params=None, token_ids=False, handoff=None):
     """Stream rec from an engine with connector params if given, ending at the first chunk after the future handoff() returns at its first token is done; return its timings, token counts and, if token_ids, its prompt and output token ids and output text."""
-    extra_body = {"request_id": rec["id"], "ignore_eos": True, "prompt": rec["prompt"]}
+    extra_body = {"request_id": rec["id"], "ignore_eos": True, "prompt": rec["prompt"], "priority": rec.get("priority", 0)}
     if params:
         extra_body["kv_transfer_params"] = {MARKER: params}
     if token_ids:

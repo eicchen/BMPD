@@ -1,4 +1,4 @@
-"""Write a stream of random token IDs with a properties file, and cut decode and prefill prompts from it."""
+"""Write a stream of random token IDs with a properties file, and cut prompts from it."""
 
 import argparse
 import hashlib
@@ -39,7 +39,7 @@ def generate(n_tokens):
     return DATA_FILE
 
 
-def load(decode, prefill, load_seed=LOAD_SEED):
+def load_pd(decode, prefill, load_seed=LOAD_SEED):
     """decode/prefill: {length: count}. Cut consecutive prompts from the stream, starting at a seeded offset."""
     stream = np.load(DATA_FILE, mmap_mode="r")
     segs = [
@@ -63,6 +63,27 @@ def load(decode, prefill, load_seed=LOAD_SEED):
         recs.append(rec)
         o += L
     return recs
+
+
+def load_standard(pool, load_seed=LOAD_SEED):
+    """pool: {length: count}. Cut consecutive prompts from the stream, starting at a seeded offset independent of pool and wrapping past its end."""
+    token_stream = np.load(DATA_FILE, mmap_mode="r")
+    total = sum(length * count for length, count in pool.items())
+    if total > len(token_stream):
+        raise ValueError(f"need {total} tokens, stream has {len(token_stream)}")
+    offset = np.random.default_rng(load_seed).integers(len(token_stream))
+    prompt_records = []
+    for prompt_length, prompt_count in pool.items():
+        for index in range(prompt_count):
+            prompt_records.append(
+                {
+                    "id": f"{prompt_length}-{index:04d}",
+                    "length": prompt_length,
+                    "token_ids": token_stream.take(range(offset, offset + prompt_length), mode="wrap").tolist(),
+                },
+            )
+            offset += prompt_length
+    return prompt_records
 
 
 def main():
