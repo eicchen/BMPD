@@ -81,7 +81,7 @@ def _gpu_logs(log_dir):
     return gpu_requests, mixed
 
 
-def annotate(rows, engines, out):
+def parse_engine_logs(rows, engines, out):
     """Add each GPU request's log fields to rows from the engine logs in out, and write requests.jsonl, steps.jsonl and summary.properties."""
     summary = {"kv_producer_colocated": sum(len(r["gpu_requests"]) == 1 and engines[r["gpu_requests"][0]["gpu"]] == "kv_producer" for r in rows)}
     ends = {}

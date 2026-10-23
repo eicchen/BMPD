@@ -11,16 +11,17 @@ from pathlib import Path
 
 import numpy as np
 import requests
+from transformers import AutoConfig
 
 ROOT = Path(__file__).resolve().parents[3]
 for scripts_subdir in ("src", "output"):
     sys.path.insert(0, str(ROOT / "interference_system_prototype" / "scripts" / scripts_subdir))
 sys.path.insert(0, str(ROOT / "profiling" / "scripts"))
 
-from launch_interference import GPU, KV_DIR, SCHEDULING_POLICY, SERVER_DIR, _log, launch, log_indent, ping
+from launch_interference import GPU, KV_DIR, SCHEDULER_CLS, SCHEDULING_POLICY, SERVER_DIR, _log, launch, log_indent, ping
 from system import CHUNK_SIZE, ENGINE_PORT, L1_SIZE_GB, LMCACHE_HTTP_PORT, client, complete
 from token_generation import DATA_FILE
-from config import GPU_MEM_UTIL, GPU_TYPE, MAX_MODEL_LEN, MODEL
+from config import GPU_MEM_UTIL, GPU_TYPE, MAX_MODEL_LEN, MODEL, MODEL_DIR
 
 OUTPUT_ROOT = ROOT / "profiling" / "output" / "interference"
 ARRIVAL_SEED = 0
@@ -43,9 +44,10 @@ def _lmcache_stores_in_flight():
 
 
 def wipe_engine(gpu):
-    """Wait until vLLM on gpu holds no requests and LMCache has no stores in flight, then empty LMCache's L1 so the next run starts with no cached KV."""
+    """Wait until vLLM on gpu holds no requests and LMCache has no stores in flight, then empty vLLM's prefix cache and LMCache's L1 so the next run starts with no cached KV."""
     while _vllm_requests(gpu) or _lmcache_stores_in_flight():
         time.sleep(0.5)
+    requests.post(f"http://localhost:{ENGINE_PORT + gpu}/reset_prefix_cache")
     requests.post(f"http://localhost:{LMCACHE_HTTP_PORT}/cache/clear")
     _log("Wiped vLLM and LMCache")
 
@@ -193,6 +195,7 @@ def base_properties(gpu, server_dir, max_num_seqs=None):
         "max_model_len": MAX_MODEL_LEN,
         "max_num_seqs": max_num_seqs,
         "scheduling_policy": SCHEDULING_POLICY,
+        "scheduler_cls": SCHEDULER_CLS,
         "l1_size_gb": L1_SIZE_GB,
         "chunk_size": CHUNK_SIZE,
         "vllm_version": version("vllm"),

@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bmpd-vllm-modifications"
+version = "0.1.0"
+description = "BMPD's runtime modifications to vLLM 0.23.0"
+
+[project.entry-points."vllm.general_plugins"]
+tracing = "vllm_tracing:register"
+
+[tool.setuptools]
+py-modules = ["vllm_tracing", "in_order_scheduler"]
