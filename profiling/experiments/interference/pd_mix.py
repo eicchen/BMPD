@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 
 from common import GPU, KV_DIR, OUTPUT_ROOT, _log, base_properties, check, engine_logs, load_decode_file, log_indent, send, send_times, servers, wipe_engine, write_decode_file, write_properties
-from metric import annotate
+from metric import parse_engine_logs
 from token_generation import load_standard
 
 DECODE_LENGTHS = (2048, 512)
@@ -88,7 +88,7 @@ def _serve_run(
         if found_chunks < total_chunks:
             raise RuntimeError(f"Only {found_chunks}/{total_chunks} decode chunks found in {KV_DIR}")
         request_results = asyncio.run(send(mixed_requests, gpu))
-    annotate(request_results, {gpu: "kv_both"}, output_dir)
+    parse_engine_logs(request_results, {gpu: "kv_both"}, output_dir)
     write_properties(
         output_dir / "run.properties",
         {

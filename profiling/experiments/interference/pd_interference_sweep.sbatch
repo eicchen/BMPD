@@ -3,7 +3,7 @@
 #SBATCH --partition=seec-contrib
 #SBATCH --gres=gpu:a40:1
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=128G
+#SBATCH --mem=256G
 #SBATCH --exclude=r003
 #SBATCH --time=4:00:00
 #SBATCH --chdir=/home/eicchen/conserve_project/BMPD/profiling/experiments/interference
@@ -24,9 +24,11 @@ python - <<'EOF'
 from pd_interference import run_sweep
 
 run_sweep(
-    "length_sweep2",
+    "batch_size_test2",
     [512, 1024, 2048, 4096, 8192, 16384, 32768],
     [128, 256, 512, 1024, 2048],
-    32,
+    16,
+    0,
+    (16,)
 )
 EOF

@@ -11,7 +11,7 @@ import requests
 import prototype
 from baselines import Colocated, Disagg
 from load import ROOT, get_rec_turns
-from metric import annotate
+from metric import parse_engine_logs
 from system import CHUNK_SIZE, L1_SIZE_GB, LMCACHE_HTTP_PORT, launch_engine, launch_lmcache, progress, wait_engine
 
 sys.path.insert(0, str(ROOT / "config"))
@@ -66,7 +66,7 @@ def _run(recs, engines, replay, out, connector=None):
             print(f"{datetime.now():%H:%M:%S} Terminating {name}...", flush=True)
             proc.terminate()
             proc.wait()
-    annotate(rows, engines, out)
+    parse_engine_logs(rows, engines, out)
     props = {
         "system": f"{replay.__module__}.{replay.__qualname__}",
         "requests": get_rec_turns(),

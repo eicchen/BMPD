@@ -17,10 +17,18 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parents[2] / "config"))
 from config import GPU_MEM_UTIL, MAX_MODEL_LEN, MODEL, MODEL_DIR, PROFILE
 
-ENGINE_PORT = 7100
-LMCACHE_PORT, LMCACHE_HTTP_PORT = 7600, 7601
-TELEMETRY_PORT = 7602
-L1_SIZE_GB = 60
+
+def _port_offset():
+    """Ten times the lowest physical GPU index of this Slurm job or step, 0 outside Slurm."""
+    gpus = os.environ.get("SLURM_JOB_GPUS") or os.environ.get("SLURM_STEP_GPUS") or "0"
+    return 10 * min(map(int, gpus.split(",")))
+
+
+PORT_OFFSET = _port_offset()
+ENGINE_PORT = 7100 + PORT_OFFSET
+LMCACHE_PORT, LMCACHE_HTTP_PORT = 7600 + PORT_OFFSET, 7601 + PORT_OFFSET
+TELEMETRY_PORT = 7602 + PORT_OFFSET
+L1_SIZE_GB = 120
 CHUNK_SIZE = 256
 MARKER = "conserve_pd"
 

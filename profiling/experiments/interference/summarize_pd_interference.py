@@ -6,17 +6,93 @@ Run from this directory with the conserve env active; an argument names the expe
 """
 
 import csv
-import json
 import sys
 
 import numpy as np
 
 from pd_interference import OUTPUT_DIR
-from plot_interference import _properties, measure
+from interference_metrics import RUN_NAMES, STATISTICS, load_prompts, load_requests, run_properties, step_kinds
 
-RUN_NAMES = ("colocated", "disaggregated/prefill", "disaggregated/decode")
-STATISTICS = {"mean": np.mean, "p50": np.median, "p95": lambda values: np.percentile(values, 95), "max": np.max}
-LATENCIES = (("queue", "mean"), ("queue", "p95"), ("ttft", "mean"), ("ttft", "p95"), ("tpot", "mean"), ("tpot", "p50"), ("tpot", "p95"), ("e2e", "mean"))
+LATENCIES = (("queue", "mean"), ("queue", "p95"), ("ttft_engine_time", "mean"), ("ttft_engine_time", "p95"), ("tpot", "mean"), ("tpot", "p50"), ("tpot", "p95"), ("e2e_engine_time", "mean"))
+
+
+# Report data
+
+
+def measure_latencies(data_dir):
+    """Request count and LATENCIES in seconds of each run, NaN for TPOT of a run that generates one token per request."""
+    run_latencies = {}
+    for run_name in RUN_NAMES:
+        run_requests = load_requests(data_dir / run_name)
+        values = {
+            "queue": [request.queue for request in run_requests],
+            "ttft_engine_time": [request.ttft_engine_time for request in run_requests],
+            "tpot": [gap for request in run_requests for gap in request.tpot],
+            "e2e_engine_time": [request.e2e_engine_time for request in run_requests],
+        }
+        run_latencies[run_name] = {
+            "requests": len(run_requests),
+            **{f"{metric}_{statistic}_s": STATISTICS[statistic](values[metric]) if values[metric] else np.nan for metric, statistic in LATENCIES},
+        }
+    return run_latencies
+
+
+def comparisons(run_latencies):
+    """Colocated against the disaggregated prefill run for queue and TTFT and the decode run for TPOT, as (metric, colocated, disaggregated, colocated change in percent) rows."""
+    compared_latencies = (
+        ("TTFT s", "mean", 1, "ttft_engine_time", "disaggregated/prefill"),
+        ("TTFT s", "p95", 1, "ttft_engine_time", "disaggregated/prefill"),
+        ("queue s", "mean", 1, "queue", "disaggregated/prefill"),
+        ("TPOT ms", "mean", 1e3, "tpot", "disaggregated/decode"),
+        ("TPOT ms", "p50", 1e3, "tpot", "disaggregated/decode"),
+        ("TPOT ms", "p95", 1e3, "tpot", "disaggregated/decode"),
+    )
+    comparison_rows = []
+    for label, statistic, scale, metric, disaggregated_run in compared_latencies:
+        colocated_value = run_latencies["colocated"][f"{metric}_{statistic}_s"] * scale
+        disaggregated_value = run_latencies[disaggregated_run][f"{metric}_{statistic}_s"] * scale
+        comparison_rows.append((f"{label} {statistic}", colocated_value, disaggregated_value, (colocated_value / disaggregated_value - 1) * 100))
+    return comparison_rows
+
+
+def step_statistics(data_dir):
+    """(run, step kind, steps, mean ms, p95 ms, mean prompt tokens) of each kind of engine step that did work in each run."""
+    step_rows = []
+    for run_name in RUN_NAMES:
+        for step_kind, kind_steps in step_kinds(data_dir / run_name).items():
+            if kind_steps:
+                durations = np.array([step["end"] - step["start"] for step in kind_steps]) * 1e3
+                step_rows.append((run_name, step_kind, len(kind_steps), durations.mean(), np.percentile(durations, 95), np.mean([step["ctx_tokens"] for step in kind_steps])))
+    return step_rows
+
+
+def e2e_statistics(prompts):
+    """STATISTICS of the colocated and disaggregated E2E from send and in engine time, the mean interference, and the interference per prompt."""
+    prompt_interference_from_send = np.array([prompt.interference_from_send for prompt in prompts])
+    labelled_latencies = {
+        "colocated from send": [prompt.colocated.e2e_from_send for prompt in prompts],
+        "disaggregated from send": [prompt.disaggregated.e2e_from_send for prompt in prompts],
+        "colocated engine time": [prompt.colocated.e2e_engine_time for prompt in prompts],
+        "disaggregated engine time": [prompt.disaggregated.e2e_engine_time for prompt in prompts],
+    }
+    return {label: [function(values) for function in STATISTICS.values()] for label, values in labelled_latencies.items()}, prompt_interference_from_send.mean(), prompt_interference_from_send
+
+
+def e2e_totals(prompts):
+    """Total and per-prompt E2E from send, colocated and disaggregated, with their difference and the colocated change in percent."""
+    colocated = [prompt.colocated.e2e_from_send for prompt in prompts]
+    disaggregated = [prompt.disaggregated.e2e_from_send for prompt in prompts]
+    totals = {}
+    for label, aggregate in (("Total run", np.sum), ("Per request", np.mean)):
+        colocated_value, disaggregated_value = aggregate(colocated), aggregate(disaggregated)
+        totals[label] = (colocated_value, disaggregated_value, colocated_value - disaggregated_value, (colocated_value / disaggregated_value - 1) * 100)
+    return totals
+
+
+# ---------------
+
+
+# Report sections
 
 
 def _number(value):
@@ -27,26 +103,6 @@ def _number(value):
 def _table(header, rows):
     """header and rows as a markdown table."""
     return "\n".join(f"| {' | '.join(map(str, cells))} |" for cells in (header, ["---"] * len(header), *rows))
-
-
-def _gpu_requests(run_dir):
-    """Each request's GPU request in run_dir, keyed by its prompt index."""
-    return {
-        request_result["id"].split("-", 1)[1]: request_result["gpu_requests"][0]
-        for request_result in map(json.loads, (run_dir / "requests.jsonl").read_text().splitlines())
-    }
-
-
-def measure_latencies(data_dir):
-    """Request count and LATENCIES in seconds of each run, NaN for TPOT of a run that generates one token per request."""
-    run_latencies = {}
-    for run_name in RUN_NAMES:
-        for values in measure(data_dir / run_name).values():
-            run_latencies[run_name] = {
-                "requests": len(values["queue"]),
-                **{f"{metric}_{statistic}_s": STATISTICS[statistic](values[metric]) if values[metric] else np.nan for metric, statistic in LATENCIES},
-            }
-    return run_latencies
 
 
 def latency_section(run_latencies):
@@ -60,72 +116,28 @@ def latency_section(run_latencies):
         ]
         for run_name, latencies in run_latencies.items()
     ]
-    return f"## Latency per run\n\n{_table(header, table_rows)}"
+    return f"## Latency per run\n\nQueue time runs from send to the request's first engine step; TTFT and E2E run from that step.\n\n{_table(header, table_rows)}"
 
 
-def comparison_section(data_dir):
-    """Colocated against the disaggregated prefill phase for queue and TTFT and the decode phase for TPOT and decode time, with the colocated change."""
-    colocated = measure(data_dir / "colocated")["colocated"]
-    prefill = measure(data_dir / "disaggregated/prefill")["prefill"]
-    decode = measure(data_dir / "disaggregated/decode")["decode"]
-    comparisons = (
-        ("TTFT s", "mean", 1, "ttft", prefill),
-        ("TTFT s", "p95", 1, "ttft", prefill),
-        ("queue s", "mean", 1, "queue", prefill),
-        ("TPOT ms", "mean", 1e3, "tpot", decode),
-        ("TPOT ms", "p50", 1e3, "tpot", decode),
-        ("TPOT ms", "p95", 1e3, "tpot", decode),
-        ("decode time s", "mean", 1, "e2e", decode),
-    )
-    table_rows = []
-    for label, statistic, scale, metric, disaggregated in comparisons:
-        colocated_value = STATISTICS[statistic](colocated[metric]) * scale
-        disaggregated_value = STATISTICS[statistic](disaggregated[metric]) * scale
-        table_rows.append([f"{label} {statistic}", _number(colocated_value), _number(disaggregated_value), f"{(colocated_value / disaggregated_value - 1) * 100:+.0f}%"])
+def comparison_section(comparison_rows):
+    """Markdown table of the colocated against disaggregated comparison_rows."""
+    table_rows = [[metric, _number(colocated_value), _number(disaggregated_value), f"{change:+.0f}%"] for metric, colocated_value, disaggregated_value, change in comparison_rows]
     return f"## Colocated against disaggregated\n\n{_table(['metric', 'colocated', 'disaggregated', 'change'], table_rows)}"
 
 
-def steps_section(data_dir):
-    """Count, mean and p95 duration and mean prompt tokens of the engine steps that did work in each run, split into decode-only, mixed and prefill-only."""
-    table_rows = []
-    for run_name in RUN_NAMES:
-        steps = [
-            step
-            for steps_file in (data_dir / run_name).glob("gpu*/steps.jsonl")
-            for step in map(json.loads, steps_file.read_text().splitlines())
-            if step["ctx_tokens"] or step["gen_reqs"]
-        ]
-        step_kinds = {
-            "decode-only": [step for step in steps if step["gen_reqs"] and not step["ctx_tokens"]],
-            "mixed": [step for step in steps if step["gen_reqs"] and step["ctx_tokens"]],
-            "prefill-only": [step for step in steps if step["ctx_tokens"] and not step["gen_reqs"]],
-        }
-        for step_kind, kind_steps in step_kinds.items():
-            if kind_steps:
-                durations = np.array([step["end"] - step["start"] for step in kind_steps]) * 1e3
-                table_rows.append([run_name, step_kind, len(kind_steps), _number(durations.mean()), _number(np.percentile(durations, 95)), f"{np.mean([step['ctx_tokens'] for step in kind_steps]):.0f}"])
+def steps_section(step_rows):
+    """Markdown table of the engine step_rows."""
+    table_rows = [[run_name, step_kind, steps, _number(mean), _number(p95), f"{prompt_tokens:.0f}"] for run_name, step_kind, steps, mean, p95, prompt_tokens in step_rows]
     return f"## Engine steps\n\n{_table(['run', 'step kind', 'steps', 'mean (ms)', 'p95 (ms)', 'mean prompt tokens'], table_rows)}"
 
 
-def e2e_latencies(data_dir):
-    """End-to-end latency per request, colocated against its disaggregated prefill plus decode, full from send and engine only from first step."""
-    colocated, prefill, decode = (_gpu_requests(data_dir / run_name) for run_name in RUN_NAMES)
-    prompt_indices = sorted(colocated)
-    e2e = {}
-    for start, scope in (("sent", "full"), ("first_step", "engine")):
-        e2e[f"colocated {scope}"] = np.array([colocated[index]["done"] - colocated[index][start] for index in prompt_indices])
-        e2e[f"disaggregated {scope}"] = np.array([prefill[index]["done"] - prefill[index][start] + decode[index]["done"] - decode[index][start] for index in prompt_indices])
-    return e2e
-
-
-def e2e_section(e2e):
-    """Markdown table of the end-to-end latencies in e2e and the colocated full penalty by arrival order."""
-    table_rows = [[name, *(_number(function(values)) for function in STATISTICS.values())] for name, values in e2e.items()]
-    penalty = e2e["colocated full"] - e2e["disaggregated full"]
+def e2e_section(e2e_by_statistic, interference_mean, request_interference):
+    """Markdown table of the end-to-end latency statistics and the colocated penalty from send by prompt index."""
+    table_rows = [[name, *map(_number, values)] for name, values in e2e_by_statistic.items()]
     return (
         "## End-to-end latency (s)\n\nDisaggregated adds each prompt's prefill and decode.\n\n"
         f"{_table(['', *STATISTICS], table_rows)}\n\n"
-        f"colocated - disaggregated full: mean {penalty.mean():.2f} s, by arrival order {np.round(penalty, 1).tolist()}"
+        f"colocated - disaggregated from send: mean {interference_mean:.2f} s, by prompt index {np.round(request_interference, 1).tolist()}"
     )
 
 
@@ -135,8 +147,8 @@ if __name__ == "__main__":
     plot_dir = OUTPUT_DIR / experiment_name / "plot"
     plot_dir.mkdir(parents=True, exist_ok=True)
     run_latencies = measure_latencies(data_dir)
-    e2e = e2e_latencies(data_dir)
-    colocated_properties = _properties(data_dir / "colocated")
+    prompts = load_prompts(data_dir)
+    colocated_properties = run_properties(data_dir / "colocated")
     with open(plot_dir / "interference.csv", "w", newline="") as csv_file:
         writer = csv.DictWriter(csv_file, ["run", "requests", *(f"{metric}_{statistic}_s" for metric, statistic in LATENCIES)])
         writer.writeheader()
@@ -145,12 +157,11 @@ if __name__ == "__main__":
         f"# {experiment_name}",
         f"{colocated_properties['request_count']} prompts, input length {colocated_properties['prompt_length']} tokens, output length {colocated_properties['output_length']} tokens, max_num_seqs {colocated_properties.get('max_num_seqs')}.",
         latency_section(run_latencies),
-        comparison_section(data_dir),
-        steps_section(data_dir),
-        e2e_section(e2e),
+        comparison_section(comparisons(run_latencies)),
+        steps_section(step_statistics(data_dir)),
+        e2e_section(*e2e_statistics(prompts)),
     )
     (plot_dir / "interference.md").write_text("\n\n".join(sections) + "\n")
     print(f"Wrote {plot_dir / 'interference.md'}, {plot_dir / 'interference.csv'}")
-    for label, aggregate in (("Total run", np.sum), ("Per Turn", np.mean)):
-        colocated_value, disaggregated_value = aggregate(e2e["colocated full"]), aggregate(e2e["disaggregated full"])
-        print(f"{label} E2E: colocated {colocated_value:.2f} s, disaggregated {disaggregated_value:.2f} s, difference {colocated_value - disaggregated_value:.2f} s ({(colocated_value / disaggregated_value - 1) * 100:+.1f}%)")
+    for label, (colocated_value, disaggregated_value, difference, change) in e2e_totals(prompts).items():
+        print(f"{label} E2E: colocated {colocated_value:.2f} s, disaggregated {disaggregated_value:.2f} s, difference {difference:.2f} s ({change:+.1f}%)")

@@ -109,6 +109,17 @@ def load_decode_file(decode_requests):
     return found_chunks, total_chunks
 
 
+def l1_request_cap(prompt_length, output_length):
+    """Most requests whose prompt and output KV fit in LMCache's L1 below its eviction watermark."""
+    storage_manager = requests.get(f"http://localhost:{LMCACHE_HTTP_PORT}/status").json()["storage_manager"]
+    l1_budget = storage_manager["l1_manager"]["memory_configured_bytes"] * storage_manager["l1_eviction_controller"]["trigger_watermark"]
+    model_config = AutoConfig.from_pretrained(MODEL, cache_dir=MODEL_DIR, local_files_only=True)
+    bytes_per_token = 2 * model_config.num_hidden_layers * model_config.num_key_value_heads * model_config.head_dim * model_config.dtype.itemsize
+    request_cap = int(l1_budget // (bytes_per_token * (prompt_length + output_length)))
+    _log(f"L1 budget {l1_budget / (1 << 30):.1f} GB ({storage_manager['l1_eviction_controller']['trigger_watermark']} of {storage_manager['l1_manager']['memory_configured_bytes'] / (1 << 30):.0f} GB) fits {request_cap} requests of {prompt_length} + {output_length} tokens")
+    return request_cap
+
+
 # Data serving
 
 

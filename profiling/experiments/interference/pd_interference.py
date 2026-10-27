@@ -8,12 +8,12 @@ Run from this directory on a GPU node with the conserve env active. run launches
 import asyncio
 from pathlib import Path
 
-from common import GPU, KV_DIR, OUTPUT_ROOT, _log, base_properties, check, delete_decode_file, engine_logs, load_decode_file, log_indent, send, send_times, servers, wipe_engine, write_decode_file, write_properties
-from metric import annotate
+from common import GPU, KV_DIR, OUTPUT_ROOT, _log, base_properties, check, delete_decode_file, engine_logs, l1_request_cap, load_decode_file, log_indent, send, send_times, servers, wipe_engine, write_decode_file, write_properties
+from metric import parse_engine_logs
 from token_generation import load_standard
 
 LENGTHS = (2048, 512)
-REQUEST_COUNT = 128
+REQUEST_COUNT = 32
 ARRIVAL_RATE = 2.0
 PROMPT_SEED = 0
 OUTPUT_DIR = OUTPUT_ROOT / Path(__file__).stem
@@ -33,6 +33,26 @@ def build_requests(request_kind, prompt_length, output_length, request_count, ar
 # Run
 
 
+def _serve_decodes(timed_requests, lengths, gpu):
+    """Serve decode timed_requests in groups that fit in L1, emptying L1 and loading each group's KV into it first; return their results and the chunks found and expected."""
+    group_size = l1_request_cap(*lengths)
+    request_results = []
+    chunk_counts = {"found_chunks": 0, "total_chunks": 0}
+    for start in range(0, len(timed_requests), group_size):
+        group = timed_requests[start : start + group_size]
+        if start:
+            wipe_engine(gpu)
+        _log(f"Loading KV of {len(group)} decode prompts into L1...")
+        found_chunks, total_chunks = load_decode_file(group)
+        _log(f"Loaded {found_chunks}/{total_chunks} chunks from file")
+        if found_chunks < total_chunks:
+            raise RuntimeError(f"Only {found_chunks}/{total_chunks} decode chunks found in {KV_DIR}")
+        chunk_counts["found_chunks"] += found_chunks
+        chunk_counts["total_chunks"] += total_chunks
+        request_results += asyncio.run(send(group, gpu))
+    return request_results, chunk_counts
+
+
 def _serve_run(
     output_dir,
     server_dir,
@@ -43,20 +63,18 @@ def _serve_run(
     max_num_seqs,
     gpu,
 ):
-    """One run of request_kind requests on servers already running with logs in server_dir: wipe them and serve the requests, prefills writing their KV to the decode files and decodes loading it from them first, then save this run's slice of the engine logs, the per-request timings and run.properties to output_dir."""
+    """One run of request_kind requests on servers already running with logs in server_dir: wipe them and serve the requests, prefills writing their KV to the decode files and decodes loading it from them in groups that fit in L1, then save this run's slice of the engine logs, the per-request timings and run.properties to output_dir."""
     timed_requests = build_requests(request_kind, lengths[0], 1 if request_kind == "prefill" else lengths[1], request_count, arrival_rate)
     chunk_counts = {}
     wipe_engine(gpu)
     with engine_logs(server_dir, output_dir, gpu):
-        if request_kind == "decode":
-            _log(f"Loading KV of {len(timed_requests)} decode prompts into L1...")
-            found_chunks, total_chunks = load_decode_file(timed_requests)
-            _log(f"Loaded {found_chunks}/{total_chunks} chunks")
-            if found_chunks < total_chunks:
-                raise RuntimeError(f"Only {found_chunks}/{total_chunks} decode chunks found in {KV_DIR}")
-            chunk_counts = {"found_chunks": found_chunks, "total_chunks": total_chunks}
-        request_results = write_decode_file(timed_requests, gpu) if request_kind == "prefill" else asyncio.run(send(timed_requests, gpu))
-    annotate(request_results, {gpu: "kv_both"}, output_dir)
+        if request_kind == "prefill":
+            request_results = write_decode_file(timed_requests, gpu)
+        elif request_kind == "decode":
+            request_results, chunk_counts = _serve_decodes(timed_requests, lengths, gpu)
+        else:
+            request_results = asyncio.run(send(timed_requests, gpu))
+    parse_engine_logs(request_results, {gpu: "kv_both"}, output_dir)
     write_properties(
         output_dir / "run.properties",
         {
@@ -151,6 +169,7 @@ if __name__ == "__main__":
     # - max_num_seqs: cap on requests per engine step (vLLM --max-num-seqs), needs launch_engine; None keeps vLLM's default, 256 on the A40
     # - gpu: GPU id, GPU by default
     # - launch_engine: launch fresh servers for this call if True (default), else use the running ones of launch_interference.py; either way each run starts from an idle engine and an empty LMCache L1
-    # run_single("no_warmup2", LENGTHS, 16, launch_engine=False)
-    # run_sweep("sweep_test", [1024, 2048, 4096], [512], 16)
-    print(build_requests("test", 1024, 512, 16, 0))
+    run_single("test", LENGTHS, 16, launch_engine=True)
+    # run_sweep("test_ordering2", [1024, 2048, 4096], [512, 1024], 16)
+    # run_sweep("length_sweep_ordered", [16384, 32768], [128, 256, 512, 1024, 2048], 32)
+    # print(build_requests("test", 1024, 512, 16, 0))

@@ -4,6 +4,7 @@ Run from this directory on a GPU node with the conserve env active, then call th
     python launch_interference.py
 """
 
+import os
 import signal
 import sys
 from contextlib import contextmanager, suppress
@@ -20,8 +21,10 @@ from config import MODEL_DIR
 
 GPU = 0
 SERVER_DIR = ROOT / "profiling" / "output" / "interference" / "servers"
-KV_DIR = MODEL_DIR.parent / "interference_kv"
+KV_DIR = MODEL_DIR.parent / "interference_kv" / os.environ.get("SLURM_JOB_ID", "local")
 SCHEDULING_POLICY = "priority"
+SCHEDULER_CLS = "in_order_scheduler.InOrderScheduler"
+# SCHEDULER_CLS = None
 LOG_DEPTH = 0
 
 
@@ -48,11 +51,12 @@ def launch(output_dir, gpu, kv_dir, max_num_seqs=None):
         ping(gpu)
         raise RuntimeError(f"Servers already up on GPU {gpu}; stop launch_interference.py or pass launch_engine=False")
     output_dir.mkdir(parents=True, exist_ok=True)
+    kv_dir.mkdir(parents=True, exist_ok=True)
     processes = []
     try:
         _log(f"Launching LMCache server and vLLM on GPU {gpu}...")
         processes.append(launch_lmcache([gpu], output_dir, kv_dir))
-        processes.append(launch_engine(gpu, "kv_both", output_dir / f"gpu{gpu}", "LMCacheMPConnector", max_num_seqs, SCHEDULING_POLICY))
+        processes.append(launch_engine(gpu, "kv_both", output_dir / f"gpu{gpu}", "LMCacheMPConnector", max_num_seqs, SCHEDULING_POLICY, SCHEDULER_CLS))
         wait_engine(processes[-1], gpu)
         _log("LMCache server and vLLM ready")
         yield
