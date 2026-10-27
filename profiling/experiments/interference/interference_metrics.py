@@ -28,8 +28,9 @@ def token_times(log_dir):
     for line in (log_dir / "core.jsonl").read_text().splitlines():
         event = json.loads(line)
         if event["event"] == "step_end":
+            timestamp = event["timestamp"]
             for request_id in event["finished_request_ids"]:  # every request with output this step, not only finished ones
-                emission_times[SUFFIX.sub("", request_id)].append(datetime.fromisoformat(event["timestamp"]).timestamp())
+                emission_times[SUFFIX.sub("", request_id)].append(timestamp if isinstance(timestamp, float) else datetime.fromisoformat(timestamp).timestamp())
     return emission_times
 
 

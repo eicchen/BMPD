@@ -76,8 +76,9 @@ def _token_times(log_dir):
     for line in (log_dir / "core.jsonl").read_text().splitlines():
         rec = json.loads(line)
         if rec["event"] == "step_end":
+            timestamp = rec["timestamp"]
             for rid in rec["finished_request_ids"]:  # every request with output this step, not only finished ones
-                times[SUFFIX.sub("", rid)].append(datetime.fromisoformat(rec["timestamp"]).timestamp())
+                times[SUFFIX.sub("", rid)].append(timestamp if isinstance(timestamp, float) else datetime.fromisoformat(timestamp).timestamp())
     return times
 
 

@@ -1,11 +1,12 @@
 """Plot heatmaps of the mean and p95 interference latency per prompt (colocated minus disaggregated E2E), with its percentage slowdown, of a pd_interference sweep over input and output length, each from send and in engine time, to OUTPUT_DIR/<name>/<max_num_seqs>/plot/{from_send,engine_time}/interference_heatmap.png, and the per-prompt latency by colocated start order of one input and output length against the rest of the sweep to plot/{from_send,engine_time}/interference_by_start_order_<input>_<output>.png.
 
 Run from this directory with the conserve env active; arguments name the experiment, its max_num_seqs and the input and output length of the start-order plot, defaulting to length_sweep1, None, 4096 and 512:
-    python plot_pd_interference_sweep.py
-    python plot_pd_interference_sweep.py length_sweep1 None 4096 512
+    python plot_interference_sweep.py
+    python plot_interference_sweep.py length_sweep1 None 4096 512
 """
 
 import sys
+from pathlib import Path
 
 import matplotlib
 
@@ -13,6 +14,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import LinearSegmentedColormap, SymLogNorm
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pd_interference import OUTPUT_DIR
 from interference_metrics import STATISTICS, load_prompts, run_properties
@@ -61,13 +64,20 @@ def _interference_in_start_order(data_dir, timing):
     return np.array([getattr(prompt, f"interference_{timing}") for prompt in _in_start_order(data_dir)])
 
 
-def start_order_series(sweep_dir, input_length, output_length, timing):
-    """Per-prompt E2E and TTFT by timing and run kind of the input_length and output_length cell, and per-prompt E2E interference by timing of every cell sharing its output length and of every cell sharing its input length, keyed by the swept length, each in its cell's colocated start order."""
-    input_lengths, output_lengths = _sweep_lengths(sweep_dir)
-    prompts = _in_start_order(sweep_dir / str(input_length) / str(output_length) / "data")
+def latencies_in_start_order(data_dir, timing):
+    """Per-prompt E2E and TTFT by timing and run kind of data_dir, in colocated start order."""
+    prompts = _in_start_order(data_dir)
     return (
         {run_kind: np.array([getattr(getattr(prompt, run_kind), f"e2e_{timing}") for prompt in prompts]) for run_kind in ("colocated", "disaggregated")},
         {run_kind: np.array([getattr(getattr(prompt, run_kind), f"ttft_{timing}") for prompt in prompts]) for run_kind in ("colocated", "disaggregated")},
+    )
+
+
+def start_order_series(sweep_dir, input_length, output_length, timing):
+    """Per-prompt E2E and TTFT by timing and run kind of the input_length and output_length cell, and per-prompt E2E interference by timing of every cell sharing its output length and of every cell sharing its input length, keyed by the swept length, each in its cell's colocated start order."""
+    input_lengths, output_lengths = _sweep_lengths(sweep_dir)
+    return (
+        *latencies_in_start_order(sweep_dir / str(input_length) / str(output_length) / "data", timing),
         {length: _interference_in_start_order(sweep_dir / str(length) / str(output_length) / "data", timing) for length in input_lengths},
         {length: _interference_in_start_order(sweep_dir / str(input_length) / str(length) / "data", timing) for length in output_lengths},
     )

@@ -43,13 +43,18 @@ def _lmcache_stores_in_flight():
     return store_controller["pending_keys_count"] + store_controller["in_flight_task_count"]
 
 
-def wipe_engine(gpu):
+def wipe_engine(gpu, wipe_vllm=True, wipe_lmcache=True):
     """Wait until vLLM on gpu holds no requests and LMCache has no stores in flight, then empty vLLM's prefix cache and LMCache's L1 so the next run starts with no cached KV."""
     while _vllm_requests(gpu) or _lmcache_stores_in_flight():
         time.sleep(0.5)
-    requests.post(f"http://localhost:{ENGINE_PORT + gpu}/reset_prefix_cache")
-    requests.post(f"http://localhost:{LMCACHE_HTTP_PORT}/cache/clear")
-    _log("Wiped vLLM and LMCache")
+        
+    if wipe_vllm:
+        requests.post(f"http://localhost:{ENGINE_PORT + gpu}/reset_prefix_cache")
+        _log("Wiped vLLM")
+    
+    if wipe_lmcache:
+        requests.post(f"http://localhost:{LMCACHE_HTTP_PORT}/cache/clear")
+        _log("Wiped LMCache")
 
 
 @contextmanager

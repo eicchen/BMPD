@@ -21,14 +21,9 @@ def _read_jsonl(path):
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
-def _epoch(iso):
-    """Epoch seconds of an ISO timestamp."""
-    return datetime.fromisoformat(iso).timestamp()
-
-
 def _arrivals(log_dir):
     """When each request reached the engine, from the request_start events in log_dir's engine.jsonl."""
-    return {event["request_id"]: _epoch(event["timestamp"]) for event in _read_jsonl(log_dir / "engine.jsonl") if event["event"] == "request_start"}
+    return {event["request_id"]: event["timestamp"] for event in _read_jsonl(log_dir / "engine.jsonl") if event["event"] == "request_start"}
 
 
 def _steps(log_dir, server_log):
@@ -37,12 +32,12 @@ def _steps(log_dir, server_log):
     step_start = None
     for event in _read_jsonl(log_dir / "core.jsonl"):
         if event["event"] == "step_start":
-            step_start = _epoch(event["timestamp"])  # async scheduling: opens the pass that collects the batch scheduled one pass earlier
+            step_start = event["timestamp"]  # async scheduling: opens the pass that collects the batch scheduled one pass earlier
             continue
         steps.append(
             {
                 "start": step_start,
-                "end": _epoch(event["timestamp"]),
+                "end": event["timestamp"],
                 "request_ids": [SUFFIX.sub("", request_id) for request_id in event["executed_request_ids"]],
                 **dict.fromkeys(COUNTS, 0),
                 "kv_usage": event["kv_cache_usage"],

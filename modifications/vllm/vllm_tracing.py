@@ -1,5 +1,20 @@
 """vLLM general plugin that writes BMPD's request and engine-step event logs, enabled by vllm serve --engine-log-file and --core-log-file."""
 
+# Logged events, one JSON line each with "event" and "timestamp" (wall clock when written).
+#
+# engine.jsonl (--engine-log-file):
+# request_start: API server has tokenized the request and is handing it to the engine; not yet queued, scheduled or computed.
+#
+# core.jsonl (--core-log-file):
+# step_start: engine core begins a step, before scheduling a batch and launching it on the GPU (async scheduling: some have no step_end).
+# step_end: a batch's GPU results were turned into outputs, before they reach the API server (async scheduling: batch launched one step earlier).
+#   executed_request_ids: requests computed in the batch (prefill chunk or decode), IDs suffixed "-<8 chars>" unlike request_start's.
+#   kv_cache_usage: fraction of GPU KV cache blocks held by requests at step_end, after finished requests freed theirs.
+#   finished_request_ids: requests that emitted output (usually one token) this step, finished or not; step_end ≈ their token time.
+#   finish_reasons: per request above, "stop", "length", "abort", "error" or "repetition", or "None" if still running.
+#   num_cached_tokens: per request above, prompt tokens loaded from prefix cache or LMCache instead of computed; first output only, else None.
+#   out_token_count: number of requests with output this step (equals tokens emitted only without speculative decoding).
+
 import json
 import os
 from datetime import datetime
@@ -12,7 +27,7 @@ CORE_LOG_ENV = "BMPD_CORE_LOG_FILE"
 def _write(path, event, **fields):
     """Append event with the current time and fields to the JSONL file at path."""
     with open(path, "a") as log_file:
-        log_file.write(json.dumps({"event": event, "timestamp": datetime.now().isoformat(), **fields}) + "\n")
+        log_file.write(json.dumps({"event": event, "timestamp": datetime.now().timestamp(), **fields}) + "\n")
 
 
 def register():
@@ -86,10 +101,14 @@ def register():
                 "step_end",
                 executed_request_ids=list(scheduler_output.num_scheduled_tokens),
                 kv_cache_usage=self.kv_cache_manager.usage,
+                # kv_cache_usage=Scheduler.get_kv_cache_usage(),
                 finished_request_ids=[output.request_id for output in outputs],
                 finish_reasons=[str(output.finish_reason) for output in outputs],
                 num_cached_tokens=[output.prefill_stats.num_cached_tokens if output.prefill_stats else None for output in outputs],
-                out_token_count=len(outputs),
+                # num_cached_tokens=[output.prefill_stats.num_cached_tokens for output in outputs],
+                # num_cached_tokens=[output.num_cached_tokens for output in outputs],
+                # num_cache_creation_tokens=[output.num_cache_creation_tokens for output in outputs],
+                out_count=len(outputs),
             )
         return engine_core_outputs
 

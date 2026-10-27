@@ -12,7 +12,7 @@ from common import GPU, KV_DIR, OUTPUT_ROOT, _log, base_properties, check, delet
 from metric import parse_engine_logs
 from token_generation import load_standard
 
-LENGTHS = (2048, 512)
+LENGTHS = (8192, 512)
 REQUEST_COUNT = 32
 ARRIVAL_RATE = 2.0
 PROMPT_SEED = 0
@@ -38,10 +38,13 @@ def _serve_decodes(timed_requests, lengths, gpu):
     group_size = l1_request_cap(*lengths)
     request_results = []
     chunk_counts = {"found_chunks": 0, "total_chunks": 0}
+
+    wipe_engine(gpu)
+    
     for start in range(0, len(timed_requests), group_size):
         group = timed_requests[start : start + group_size]
-        if start:
-            wipe_engine(gpu)
+        if start != 0:
+            wipe_engine(gpu, wipe_vllm=False)
         _log(f"Loading KV of {len(group)} decode prompts into L1...")
         found_chunks, total_chunks = load_decode_file(group)
         _log(f"Loaded {found_chunks}/{total_chunks} chunks from file")
@@ -169,7 +172,7 @@ if __name__ == "__main__":
     # - max_num_seqs: cap on requests per engine step (vLLM --max-num-seqs), needs launch_engine; None keeps vLLM's default, 256 on the A40
     # - gpu: GPU id, GPU by default
     # - launch_engine: launch fresh servers for this call if True (default), else use the running ones of launch_interference.py; either way each run starts from an idle engine and an empty LMCache L1
-    run_single("test", LENGTHS, 16, launch_engine=True)
+    run_single("test2", (16384, 512), 32, launch_engine=True)
     # run_sweep("test_ordering2", [1024, 2048, 4096], [512, 1024], 16)
     # run_sweep("length_sweep_ordered", [16384, 32768], [128, 256, 512, 1024, 2048], 32)
     # print(build_requests("test", 1024, 512, 16, 0))
