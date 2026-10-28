@@ -10,7 +10,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from interference_metrics import run_properties
 from plot_interference_sweep import INK, OUTPUT_DIR, SURFACE, TIMINGS, _plot_by_start_order, latencies_in_start_order
@@ -26,7 +26,7 @@ def plot_latency_by_start_order(timing, experiment_name="test"):
     _plot_by_start_order(axes[0], e2e, f"E2E {timing_label}")
     _plot_by_start_order(axes[1], ttft, f"TTFT {timing_label}")
     figure.suptitle(
-        f"{experiment_name}: per-prompt latency by colocated start order at {properties['prompt_length']} input and {properties['output_length']} output tokens",
+        f"{experiment_name}: per-prompt latency by prompt/turn order at {properties['prompt_length']} input and {properties['output_length']} output tokens",
         x=0.01,
         ha="left",
         color=INK,

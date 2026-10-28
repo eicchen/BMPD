@@ -6,12 +6,12 @@
 #SBATCH --mem=256G
 #SBATCH --exclude=r003
 #SBATCH --time=4:00:00
-#SBATCH --chdir=/home/eicchen/conserve_project/BMPD/profiling/experiments/interference
+#SBATCH --chdir=/home/eicchen/conserve_project/BMPD/profiling/experiments/interference/interference_sweep
 #SBATCH --output=/home/eicchen/conserve_project/BMPD/profiling/output/interference/pd_interference/logs/slurm-%j.out
 #
 # Run the pd_interference input and output length sweep at vLLM's default max_num_seqs. Submit from anywhere:
 #
-#   sbatch profiling/experiments/interference/pd_interference_sweep.sbatch
+#   sbatch profiling/experiments/interference/interference_sweep/pd_interference_sweep.sbatch
 
 set -euo pipefail
 

@@ -9,14 +9,14 @@ from pathlib import Path
 import numpy as np
 from transformers import AutoTokenizer
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "config"))
 from config import MODEL, MODEL_DIR
 
 GENERATE_SEED = 0
 LOAD_SEED = 0
 ROLES = ("decode", "prefill")
-DATA_FILE = ROOT / "profiling" / "input" / f"tokens_{MODEL.split('/')[-1]}.npy"
+DATA_FILE = ROOT / "input" / "data" / f"tokens_{MODEL.split('/')[-1]}.npy"
 
 
 def generate(n_tokens):

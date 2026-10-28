@@ -145,7 +145,7 @@ def _plot_by_start_order(axis, latencies, title):
     """Plot the colocated and disaggregated latencies in seconds, already in colocated start order, against it on axis."""
     for run_kind, color in COLORS.items():
         axis.plot(np.arange(1, len(latencies[run_kind]) + 1), latencies[run_kind], color=color, label=run_kind, **MARK)
-    _style(axis, title, "Colocated start order")
+    _style(axis, title, "Prompt/turn order")
     axis.set_ylabel(f"{title} (s)", color=SECONDARY)
     axis.legend(frameon=False, labelcolor=SECONDARY)
 
@@ -174,7 +174,7 @@ def plot_by_start_order(timing, experiment_name="length_sweep1", max_num_seqs="N
     _plot_interference_by_start_order(axes[1, 0], interference_by_input_length, input_length, f"E2E interference {timing_label} at {output_length} output tokens", "Input tokens")
     _plot_interference_by_start_order(axes[1, 1], interference_by_output_length, output_length, f"E2E interference {timing_label} at {input_length} input tokens", "Output tokens")
     figure.suptitle(
-        f"{experiment_name}: per-prompt latency by colocated start order at {input_length} input and {output_length} output tokens, max_num_seqs {max_num_seqs}",
+        f"{experiment_name}: per-prompt latency by prompt/turn order at {input_length} input and {output_length} output tokens, max_num_seqs {max_num_seqs}",
         x=0.01,
         ha="left",
         color=INK,

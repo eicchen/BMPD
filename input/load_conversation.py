@@ -3,8 +3,8 @@ import sys
 from itertools import groupby, islice
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]
-TRACE = ROOT / "interference_system_prototype" / "input" / "bm25_13k_50.json"
+ROOT = Path(__file__).resolve().parents[1]
+TRACE = ROOT / "input" / "data" / "bm25_13k_50.json"
 total_turns = 0
 
 sys.path.insert(0, str(ROOT / "config"))

@@ -10,7 +10,7 @@ import requests
 
 import prototype
 from baselines import Colocated, Disagg
-from load import ROOT, get_rec_turns
+from load_conversation import ROOT, get_rec_turns
 from metric import parse_engine_logs
 from system import CHUNK_SIZE, L1_SIZE_GB, LMCACHE_HTTP_PORT, launch_engine, launch_lmcache, progress, wait_engine
 

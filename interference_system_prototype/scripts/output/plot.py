@@ -13,8 +13,8 @@ from pathlib import Path
 
 import numpy as np
 
-for d in ("src", "helpers"):
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / d))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "input"))
 
 from metric import SUFFIX
 from runs import OUTPUT_DIR

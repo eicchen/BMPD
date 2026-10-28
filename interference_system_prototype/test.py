@@ -8,10 +8,11 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-for d in ("src", "output", "helpers"):
+for d in ("src", "output"):
     sys.path.insert(0, str(Path(__file__).resolve().parent / "scripts" / d))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "input"))
 
-from load import load, get_rec_turns
+from load_conversation import load, get_rec_turns
 from runs import OUTPUT_DIR, run_col, run_disagg, run_proto
 
 ENGINES = {0: "kv_producer", 1: "kv_consumer"}

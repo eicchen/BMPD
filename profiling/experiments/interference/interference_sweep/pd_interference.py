@@ -2,11 +2,14 @@
 
 Run from this directory on a GPU node with the conserve env active. run launches its own servers; with launch_engine=False it uses those of python launch_interference.py running in another terminal on the same node:
     python pd_interference.py
-    python -c "from pd_interference import *; run('test', LENGTHS, 16, ARRIVAL_RATE)"
+    python -c "from pd_interference import *; run_single('test', LENGTHS, 16, ARRIVAL_RATE)"
 """
 
 import asyncio
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from common import GPU, KV_DIR, OUTPUT_ROOT, _log, base_properties, check, delete_decode_file, engine_logs, l1_request_cap, load_decode_file, log_indent, send, send_times, servers, wipe_engine, write_decode_file, write_properties
 from metric import parse_engine_logs

@@ -53,10 +53,11 @@ if __name__ == "__main__":
     from pathlib import Path
 
     import sys
-    for d in ("src", "output", "helpers"):
+    for d in ("src", "output"):
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent / d))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "input"))
         
-    from load import load
+    from load_conversation import load
     
     fake_gpu = {0:200000, 1:200000}
     # asyncio.run(test(load(convs=5, turns=3, tokenize=False), fake_gpu))

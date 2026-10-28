@@ -2,14 +2,17 @@
 
 Run from this directory on a GPU node with the conserve env active. run and sweep launch their own servers; with launch_engine=False, as in python pd_mix.py, they use those of python launch_interference.py running in another terminal on the same node:
     python pd_mix.py
-    python -c "from launch_interference import ping; ping()"
+    python -c "import pd_mix; from launch_interference import ping; ping()"
     python -c "from pd_mix import *; run('test', DECODE_LENGTHS, PREFILL_LENGTHS, 16, ARRIVAL_RATE, 0.5)"
 """
 
 import asyncio
+import sys
 from pathlib import Path
 
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from common import GPU, KV_DIR, OUTPUT_ROOT, _log, base_properties, check, engine_logs, load_decode_file, log_indent, send, send_times, servers, wipe_engine, write_decode_file, write_properties
 from metric import parse_engine_logs

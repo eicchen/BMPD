@@ -16,7 +16,7 @@ from transformers import AutoConfig
 ROOT = Path(__file__).resolve().parents[3]
 for scripts_subdir in ("src", "output"):
     sys.path.insert(0, str(ROOT / "interference_system_prototype" / "scripts" / scripts_subdir))
-sys.path.insert(0, str(ROOT / "profiling" / "scripts"))
+sys.path.insert(0, str(ROOT / "input"))
 
 from launch_interference import GPU, KV_DIR, SCHEDULER_CLS, SCHEDULING_POLICY, SERVER_DIR, _log, launch, log_indent, ping
 from system import CHUNK_SIZE, ENGINE_PORT, L1_SIZE_GB, LMCACHE_HTTP_PORT, client, complete

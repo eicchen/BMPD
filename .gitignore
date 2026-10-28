@@ -222,7 +222,6 @@ __marimo__/
 
 CLAUDE.md
 docs/
-profiling/input/
+input/data/
 profiling/output/
 interference_system_prototype/output
-interference_system_prototype/input
